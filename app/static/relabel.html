@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批注标签体系迁移 · 批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>批注标签体系迁移</h1>
+    <p class="subtitle">按声明顺序的规则链把批注 label 迁移到目标体系（pattern 用 re.fullmatch 匹配批注原文）·
+      <a class="nav-link" href="/">→ 批注迁移</a> ·
+      <a class="nav-link" href="/arbitrate">→ 批注集仲裁</a> ·
+      <a class="nav-link" href="/sequence">→ 序列标注语料导出</a> ·
+      <a class="nav-link" href="/nesting">→ 嵌套批注审计</a> ·
+      <a class="nav-link" href="/units">→ 批注偏移制式转换</a> ·
+      <a class="nav-link" href="/review">→ 批注审阅切片</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid">
+      <label class="field">
+        <span>文本</span>
+        <textarea id="rlText" spellcheck="false" placeholder="粘贴纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>批注 JSON（id / start / end / label，可含其余字段）</span>
+        <textarea id="annJson" spellcheck="false" placeholder='[{"id": "a1", "start": 0, "end": 2, "label": "旧-流程"}]'></textarea>
+      </label>
+      <label class="field">
+        <span>规则 JSON（target_labels / rules：from、to、可选 pattern）</span>
+        <textarea id="rulesJson" spellcheck="false" placeholder='{"target_labels": ["实体"], "rules": [{"from": "旧-对象", "to": "实体", "pattern": "数据"}, {"from": "旧-对象", "to": "流程"}]}'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="previewBtn" class="btn primary" type="button">开始迁移</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div id="errorBox" hidden>
+      <h3 class="sec-title">逐项错误（存在错误时禁止导出）</h3>
+      <ul class="err-list" id="errorList"></ul>
+    </div>
+    <div>
+      <h3 class="sec-title">原文</h3>
+      <pre class="frag-view" id="textView"></pre>
+    </div>
+    <div>
+      <h3 class="sec-title">迁移链</h3>
+      <div class="seq-table-wrap">
+        <table class="seq-table" id="chainTable"></table>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">导出迁移结果 JSON</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/relabel.js"></script>
+</body>
+</html>

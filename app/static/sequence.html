@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>序列标注语料导出 · 批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>序列标注语料导出</h1>
+    <p class="subtitle">文本 + 批注 → 分层 BILOU 序列标注语料（偏移按 Unicode 码点，区间 [start, end)）·
+      <a class="nav-link" href="/">→ 批注迁移</a> ·
+      <a class="nav-link" href="/arbitrate">→ 批注集仲裁</a> ·
+      <a class="nav-link" href="/nesting">→ 嵌套批注审计</a> ·
+      <a class="nav-link" href="/units">→ 批注偏移制式转换</a> ·
+      <a class="nav-link" href="/review">→ 批注审阅切片</a> ·
+      <a class="nav-link" href="/relabel">→ 批注标签体系迁移</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid two">
+      <label class="field">
+        <span>文本</span>
+        <textarea id="seqText" spellcheck="false" placeholder="粘贴纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>批注 JSON（id / start / end / label）</span>
+        <textarea id="annJson" spellcheck="false" placeholder='[{"id": "a1", "start": 0, "end": 4, "label": "流程"}]'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="previewBtn" class="btn primary" type="button">生成预览</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div class="seq-table-wrap">
+      <table class="seq-table" id="seqTable"></table>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">下载 CoNLL（UTF-8）</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/sequence.js"></script>
+</body>
+</html>

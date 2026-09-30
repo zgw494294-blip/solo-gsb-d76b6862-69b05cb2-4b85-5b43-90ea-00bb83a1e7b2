@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批注集仲裁 · 批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>批注集仲裁</h1>
+    <p class="subtitle">同一文本上左右两组批注的冲突仲裁（偏移按 Unicode 码点，区间 [start, end)）·
+      <a class="nav-link" href="/">→ 批注迁移</a> ·
+      <a class="nav-link" href="/sequence">→ 序列标注语料导出</a> ·
+      <a class="nav-link" href="/nesting">→ 嵌套批注审计</a> ·
+      <a class="nav-link" href="/units">→ 批注偏移制式转换</a> ·
+      <a class="nav-link" href="/review">→ 批注审阅切片</a> ·
+      <a class="nav-link" href="/relabel">→ 批注标签体系迁移</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid">
+      <label class="field">
+        <span>文本（左右批注共用）</span>
+        <textarea id="arbText" spellcheck="false" placeholder="粘贴纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>左侧批注 JSON（id / start / end / label）</span>
+        <textarea id="leftJson" spellcheck="false" placeholder='[{"id": "L1", "start": 0, "end": 4, "label": "目标"}]'></textarea>
+      </label>
+      <label class="field">
+        <span>右侧批注 JSON（id / start / end / label）</span>
+        <textarea id="rightJson" spellcheck="false" placeholder='[{"id": "R1", "start": 0, "end": 4, "label": "目标"}]'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="arbBtn" class="btn primary" type="button">开始比对</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div class="main">
+      <aside class="ann-list arb-list" id="groupList"></aside>
+      <div class="panes single">
+        <div class="pane">
+          <h3>文本 · 两侧范围叠加
+            <span class="legend">
+              <span class="legend-item"><i class="swatch ov-left"></i>仅左侧</span>
+              <span class="legend-item"><i class="swatch ov-right"></i>仅右侧</span>
+              <span class="legend-item"><i class="swatch ov-both"></i>两侧重叠</span>
+            </span>
+          </h3>
+          <pre id="arbView" class="view"></pre>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">导出仲裁结果</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/arbitrate.js"></script>
+</body>
+</html>

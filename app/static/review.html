@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批注审阅切片 · 批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>批注审阅切片</h1>
+    <p class="subtitle">批注按 max_chars 顺序装箱为审阅切片，导出 JSONL 供审阅后回导（偏移按 Unicode 码点，区间 [start, end)）·
+      <a class="nav-link" href="/">→ 批注迁移</a> ·
+      <a class="nav-link" href="/arbitrate">→ 批注集仲裁</a> ·
+      <a class="nav-link" href="/sequence">→ 序列标注语料导出</a> ·
+      <a class="nav-link" href="/nesting">→ 嵌套批注审计</a> ·
+      <a class="nav-link" href="/units">→ 批注偏移制式转换</a> ·
+      <a class="nav-link" href="/relabel">→ 批注标签体系迁移</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid two">
+      <label class="field">
+        <span>文本</span>
+        <textarea id="rvText" spellcheck="false" placeholder="粘贴纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>批注 JSON（唯一字符串 id / start / end / label）</span>
+        <textarea id="annJson" spellcheck="false" placeholder='[{"id": "a1", "start": 0, "end": 4, "label": "示例"}]'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <label class="unit-pick">max_chars
+        <input id="maxChars" type="number" min="1" step="1" value="20">
+      </label>
+      <label class="unit-pick">context_chars
+        <input id="ctxChars" type="number" min="0" step="1" value="6">
+      </label>
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="previewBtn" class="btn primary" type="button">生成切片</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div id="fragList"></div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">导出 JSONL</button>
+      <button id="templateBtn" class="btn secondary" type="button">生成审阅模板</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="importPanel" hidden>
+    <h3 class="sec-title">导入审阅结果（每个 id 恰好提交一次：keep 保留 / drop 舍弃 / correct 提交窗口内修正范围）</h3>
+    <label class="field">
+      <span>审阅结果 JSON（按切片给出 fragment_id、sha256 与逐条 decisions）</span>
+      <textarea id="reviewJson" spellcheck="false"
+        placeholder='[{"fragment_id": "frag-1", "sha256": "…", "decisions": [{"id": "a1", "action": "keep"}]}]'></textarea>
+    </label>
+    <div class="actions">
+      <button id="importBtn" class="btn primary" type="button">导入审阅结果</button>
+      <span id="importError" class="error"></span>
+    </div>
+    <div id="importErrorBox" hidden>
+      <h3 class="sec-title">导入错误（任一错误均拒绝整批）</h3>
+      <ul class="err-list" id="importErrorList"></ul>
+    </div>
+    <div id="importResult" hidden>
+      <h3 class="sec-title">导入结果（全局坐标）</h3>
+      <div class="seq-table-wrap">
+        <table class="seq-table" id="importTable"></table>
+      </div>
+      <div class="actions">
+        <button id="downloadImportBtn" class="btn primary" type="button">下载全局坐标 JSON</button>
+        <span id="importHint" class="hint"></span>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/review.js"></script>
+</body>
+</html>

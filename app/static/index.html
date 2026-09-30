@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>批注迁移台</h1>
+    <p class="subtitle">旧版批注 → 新版文本的偏移迁移（偏移按 Unicode 码点，区间 [start, end)）·
+      <a class="nav-link" href="/arbitrate">→ 批注集仲裁</a> ·
+      <a class="nav-link" href="/sequence">→ 序列标注语料导出</a> ·
+      <a class="nav-link" href="/nesting">→ 嵌套批注审计</a> ·
+      <a class="nav-link" href="/units">→ 批注偏移制式转换</a> ·
+      <a class="nav-link" href="/review">→ 批注审阅切片</a> ·
+      <a class="nav-link" href="/relabel">→ 批注标签体系迁移</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid">
+      <label class="field">
+        <span>旧版文本</span>
+        <textarea id="oldText" spellcheck="false" placeholder="粘贴旧版纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>新版文本</span>
+        <textarea id="newText" spellcheck="false" placeholder="粘贴新版纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>旧版批注 JSON（id / start / end）</span>
+        <textarea id="annJson" spellcheck="false" placeholder='[{"id": "a1", "start": 13, "end": 17}]'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="migrateBtn" class="btn primary" type="button">开始迁移</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div class="main">
+      <aside class="ann-list" id="annList"></aside>
+      <div class="panes">
+        <div class="pane">
+          <h3>旧版 · 原位置</h3>
+          <pre id="oldView" class="view"></pre>
+        </div>
+        <div class="pane">
+          <h3>新版 · 新位置 / 候选</h3>
+          <pre id="newView" class="view"></pre>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">导出迁移结果</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

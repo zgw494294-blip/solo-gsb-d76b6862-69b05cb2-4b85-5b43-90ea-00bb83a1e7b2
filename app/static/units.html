@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批注偏移制式转换 · 批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>批注偏移制式转换</h1>
+    <p class="subtitle">codepoint / UTF-16 / UTF-8 字节三种偏移制式互转（区间 [start, end)，偏移必须落在字符边界）·
+      <a class="nav-link" href="/">→ 批注迁移</a> ·
+      <a class="nav-link" href="/arbitrate">→ 批注集仲裁</a> ·
+      <a class="nav-link" href="/sequence">→ 序列标注语料导出</a> ·
+      <a class="nav-link" href="/nesting">→ 嵌套批注审计</a> ·
+      <a class="nav-link" href="/review">→ 批注审阅切片</a> ·
+      <a class="nav-link" href="/relabel">→ 批注标签体系迁移</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid two">
+      <label class="field">
+        <span>文本</span>
+        <textarea id="unitText" spellcheck="false" placeholder="粘贴纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>批注 JSON（id / start / end，可含其余字段）</span>
+        <textarea id="annJson" spellcheck="false" placeholder='[{"id": "a1", "start": 0, "end": 4, "label": "示例"}]'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <label class="unit-pick">
+        源制式
+        <select id="sourceUnit">
+          <option value="codepoint">codepoint（码点）</option>
+          <option value="utf16" selected>utf16（UTF-16 代码单元）</option>
+          <option value="utf8_byte">utf8_byte（UTF-8 字节）</option>
+        </select>
+      </label>
+      <label class="unit-pick">
+        目标制式
+        <select id="targetUnit">
+          <option value="codepoint">codepoint（码点）</option>
+          <option value="utf16">utf16（UTF-16 代码单元）</option>
+          <option value="utf8_byte" selected>utf8_byte（UTF-8 字节）</option>
+        </select>
+      </label>
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="previewBtn" class="btn primary" type="button">开始预览</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div id="errorBox" hidden>
+      <h3 class="sec-title">错误（存在错误时禁止导出）</h3>
+      <ul class="err-list" id="errorList"></ul>
+    </div>
+    <div class="seq-table-wrap">
+      <table class="seq-table" id="unitTable"></table>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">导出目标制式 JSON</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/units.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>嵌套批注审计 · 批注迁移台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>嵌套批注审计</h1>
+    <p class="subtitle">嵌套结构合法性审计与稳定嵌套 JSON 导出（偏移按 Unicode 码点，区间 [start, end)）·
+      <a class="nav-link" href="/">→ 批注迁移</a> ·
+      <a class="nav-link" href="/arbitrate">→ 批注集仲裁</a> ·
+      <a class="nav-link" href="/sequence">→ 序列标注语料导出</a> ·
+      <a class="nav-link" href="/units">→ 批注偏移制式转换</a> ·
+      <a class="nav-link" href="/review">→ 批注审阅切片</a> ·
+      <a class="nav-link" href="/relabel">→ 批注标签体系迁移</a></p>
+  </header>
+
+  <section class="panel" id="inputPanel">
+    <div class="input-grid">
+      <label class="field">
+        <span>文本</span>
+        <textarea id="nestText" spellcheck="false" placeholder="粘贴纯文本…"></textarea>
+      </label>
+      <label class="field">
+        <span>批注 JSON（id / start / end / label）</span>
+        <textarea id="annJson" spellcheck="false" placeholder='[{"id": "p", "start": 0, "end": 8, "label": "段落"}]'></textarea>
+      </label>
+      <label class="field">
+        <span>结构规则 JSON（root_labels / children）</span>
+        <textarea id="rulesJson" spellcheck="false" placeholder='{"root_labels": ["段落"], "children": {"段落": ["短语"]}}'></textarea>
+      </label>
+    </div>
+    <div class="actions">
+      <button id="demoBtn" class="btn secondary" type="button">载入示例</button>
+      <button id="auditBtn" class="btn primary" type="button">开始审计</button>
+      <span id="inputError" class="error"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="summary" id="summary"></div>
+    <div id="errorBox" hidden>
+      <h3 class="sec-title">错误（存在错误时禁止导出）</h3>
+      <ul class="err-list" id="errorList"></ul>
+    </div>
+    <div>
+      <h3 class="sec-title">嵌套树</h3>
+      <div id="nestTree"></div>
+    </div>
+    <div class="actions">
+      <button id="exportBtn" class="btn primary" type="button">导出嵌套 JSON</button>
+      <span id="exportHint" class="hint"></span>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/static/nesting.js"></script>
+</body>
+</html>
