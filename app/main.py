@@ -1,5 +1,6 @@
 """批注迁移台 —— FastAPI 后端。"""
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -9,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.arbitration import ArbitrationError, apply_arbitration, build_groups
+from app.copies import CopyConflict, CopyError, CopyNotFound, CopyStore
 from app.migration import DecisionError, apply_decisions, migrate_annotations
 from app.nesting import NestingError, audit_nesting, export_nesting, validate_rules
 from app.redaction import (
@@ -27,6 +29,9 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(title="批注迁移台")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# 可领取的审阅工作副本：SQLite 持久化（容器内经 COPIES_DB_PATH 指向挂卷目录）
+copies_store = CopyStore(os.environ.get("COPIES_DB_PATH", "copies.db"))
 
 
 class AnnotationIn(BaseModel):
@@ -166,6 +171,24 @@ class RedactRequest(BaseModel):
     text: str
     annotations: list[ArbAnnotationIn] = []
     redact_labels: list[str] = []
+
+
+class CopyCreateRequest(BaseModel):
+    text: str
+    annotations: list[ReviewAnnotationIn] = []
+
+
+class CopyIdsRequest(BaseModel):
+    reviewer: str
+    ids: list[str]
+
+
+class CopyModifyRequest(BaseModel):
+    reviewer: str
+    id: str
+    start: int
+    end: int
+    label: str
 
 
 @app.get("/")
@@ -385,6 +408,45 @@ def redact_export_api(req: RedactRequest):
         raise HTTPException(status_code=422, detail=str(exc))
     # 导出时后端重新合并遮盖区并换算片段坐标，不信任前端结果
     return run_redact_export(req.text, anns, labels)
+
+
+@app.post("/api/copies")
+def copy_create(req: CopyCreateRequest):
+    (anns,) = validate(req, REVIEW)
+    return _copy_call(copies_store.create_copy, req.text, anns)
+
+
+@app.get("/api/copies/{copy_id}")
+def copy_read(copy_id: str):
+    return _copy_call(copies_store.get_copy, copy_id)
+
+
+@app.post("/api/copies/{copy_id}/claim")
+def copy_claim(copy_id: str, req: CopyIdsRequest):
+    return _copy_call(copies_store.claim, copy_id, req.reviewer, req.ids)
+
+
+@app.post("/api/copies/{copy_id}/release")
+def copy_release(copy_id: str, req: CopyIdsRequest):
+    return _copy_call(copies_store.release, copy_id, req.reviewer, req.ids)
+
+
+@app.post("/api/copies/{copy_id}/modify")
+def copy_modify(copy_id: str, req: CopyModifyRequest):
+    return _copy_call(copies_store.modify, copy_id, req.reviewer,
+                      req.id, req.start, req.end, req.label)
+
+
+def _copy_call(fn, *args):
+    """把工作副本核心的异常映射为 HTTP 状态码：404 未知副本 / 409 持有权冲突 / 422 非法输入。"""
+    try:
+        return fn(*args)
+    except CopyNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except CopyConflict as exc:
+        raise HTTPException(status_code=409, detail=exc.detail)
+    except CopyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 def _validate_rules(rules: RulesIn) -> dict:

@@ -3,4 +3,12 @@ services:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      # 工作副本 SQLite 库文件，落在命名卷中，重启保留副本
+      - COPIES_DB_PATH=/data/copies.db
+    volumes:
+      - copies-data:/data
     restart: unless-stopped
+
+volumes:
+  copies-data:
