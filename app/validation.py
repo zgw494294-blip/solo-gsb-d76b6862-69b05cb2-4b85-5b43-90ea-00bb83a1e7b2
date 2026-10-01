@@ -80,6 +80,9 @@ UNITS = Strategy(
 # 审阅切片：区间合法、label 非空、id 唯一且只收字符串
 REVIEW = Strategy(lists=(ListSpec("annotations"),), id_type=(str,))
 
+# 可领取审阅工作副本：创建时同样要求区间合法、label 非空、字符串 id 唯一
+COPY = Strategy(lists=(ListSpec("annotations"),), id_type=(str,))
+
 # 标签体系迁移：区间合法、label 非空、id 唯一，额外字段原样保留（导出只替换 label）
 RELABEL = Strategy(lists=(ListSpec("annotations"),), fields=None)
 

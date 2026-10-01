@@ -1,7 +1,10 @@
 """批注迁移台 —— FastAPI 后端。"""
 
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
+
+from pydantic import BeforeValidator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -9,6 +12,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.arbitration import ArbitrationError, apply_arbitration, build_groups
+from app.copies import (
+    AnnotationNotFound,
+    CopyNotFound,
+    CopyStore,
+    CopyValidationError,
+    GroupHeldError,
+    ModifyConflictError,
+    NotHeldError,
+)
 from app.migration import DecisionError, apply_decisions, migrate_annotations
 from app.nesting import NestingError, audit_nesting, export_nesting, validate_rules
 from app.redaction import (
@@ -20,12 +32,20 @@ from app.relabel import RelabelError, export_labels, migrate_labels, validate_re
 from app.review import ReviewError, apply_reviews, build_fragments, to_jsonl
 from app.sequence import SequenceError, build_sequence
 from app.units import UnitsError, convert_offsets, preview_offsets
-from app.validation import ARBITRATE, LABELED, MIGRATE, RELABEL, REVIEW, UNITS, validate
+from app.validation import ARBITRATE, COPY, LABELED, MIGRATE, RELABEL, REVIEW, UNITS, validate
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="批注迁移台")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # 随应用启动初始化工作副本 SQLite（容器挂卷，重启后副本保留）
+    get_store()
+    yield
+
+
+app = FastAPI(title="批注迁移台", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -166,6 +186,50 @@ class RedactRequest(BaseModel):
     text: str
     annotations: list[ArbAnnotationIn] = []
     redact_labels: list[str] = []
+
+
+def _reject_bool(v):
+    """布尔不是合法码点偏移（pydantic 默认会把 bool 强转为 int）。"""
+    if isinstance(v, bool):
+        raise ValueError("start/end 必须是整数，不能是布尔值")
+    return v
+
+
+def _nonempty_str(v):
+    """reviewer / label 必须是非空字符串。"""
+    if not isinstance(v, str) or not v:
+        raise ValueError("必须是非空字符串")
+    return v
+
+
+# 在 pydantic 强转前校验：bool 会被默认当作 int，需先行拒绝
+StrictInt = Annotated[int, BeforeValidator(_reject_bool)]
+NonEmptyStr = Annotated[str, BeforeValidator(_nonempty_str)]
+
+
+class CopyAnnotationIn(BaseModel):
+    # 工作副本批注：唯一字符串 id、非空 label；布尔不是合法码点偏移
+    id: str
+    start: StrictInt
+    end: StrictInt
+    label: str
+
+
+class CopyRequest(BaseModel):
+    # 工作副本：固定文本 + 唯一字符串 id、非空 label 的批注（初始无人持有）
+    text: str
+    annotations: list[CopyAnnotationIn] = []
+
+
+class ReviewerIn(BaseModel):
+    reviewer: NonEmptyStr
+
+
+class CopyModifyIn(BaseModel):
+    reviewer: NonEmptyStr
+    start: StrictInt
+    end: StrictInt
+    label: NonEmptyStr
 
 
 @app.get("/")
@@ -385,6 +449,67 @@ def redact_export_api(req: RedactRequest):
         raise HTTPException(status_code=422, detail=str(exc))
     # 导出时后端重新合并遮盖区并换算片段坐标，不信任前端结果
     return run_redact_export(req.text, anns, labels)
+
+
+# ---------- 可领取的审阅工作副本 ----------
+
+_store: CopyStore | None = None
+
+
+def get_store() -> CopyStore:
+    """懒初始化副本仓库：随应用首次使用建库（容器启动命令不变）。"""
+    global _store
+    if _store is None:
+        _store = CopyStore()
+    return _store
+
+
+def _copy_snapshot(action):
+    """统一映射工作副本错误：422 非法输入 / 409 持有冲突 / 404 资源不存在。"""
+    try:
+        return action()
+    except CopyValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except (GroupHeldError, NotHeldError, ModifyConflictError) as exc:
+        raise HTTPException(status_code=409, detail={
+            "message": str(exc),
+            **({"holder": exc.holder, "group": exc.group}
+               if isinstance(exc, GroupHeldError) else {}),
+            **({"foreign": exc.foreign} if isinstance(exc, ModifyConflictError)
+               else {}),
+        })
+    except AnnotationNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except CopyNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/copies", status_code=201)
+def create_copy(req: CopyRequest):
+    (anns,) = validate(req, COPY)
+    return _copy_snapshot(lambda: get_store().create(req.text, anns))
+
+
+@app.get("/api/copies/{copy_id}")
+def read_copy(copy_id: str):
+    return _copy_snapshot(lambda: get_store().get(copy_id))
+
+
+@app.post("/api/copies/{copy_id}/annotations/{ann_id}/claim")
+def claim_copy_annotation(copy_id: str, ann_id: str, req: ReviewerIn):
+    return _copy_snapshot(lambda: get_store().claim(copy_id, ann_id, req.reviewer))
+
+
+@app.post("/api/copies/{copy_id}/annotations/{ann_id}/release")
+def release_copy_annotation(copy_id: str, ann_id: str, req: ReviewerIn):
+    return _copy_snapshot(lambda: get_store().release(copy_id, ann_id, req.reviewer))
+
+
+@app.patch("/api/copies/{copy_id}/annotations/{ann_id}")
+def modify_copy_annotation(copy_id: str, ann_id: str, req: CopyModifyIn):
+    return _copy_snapshot(
+        lambda: get_store().modify(copy_id, ann_id, req.reviewer,
+                                   req.start, req.end, req.label))
 
 
 def _validate_rules(rules: RulesIn) -> dict:

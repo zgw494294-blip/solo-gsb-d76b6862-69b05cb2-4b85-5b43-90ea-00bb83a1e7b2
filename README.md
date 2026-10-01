@@ -175,6 +175,81 @@
 
 沿用同一套容器启动方式（见下方「快速开始」），无需额外服务，直接 POST 接口即可。
 
+## 可领取的审阅工作副本（/api/copies）
+
+为现有审阅流程提供**可领取的工作副本**（纯 HTTP，无前端页面）：创建副本时
+提交**固定文本**与一组批注（每条含**唯一字符串** `id`、`start`、`end`、**非空**
+`label`，码点区间左闭右开 **[start, end)**），副本初始**无人持有**，持久化到
+随容器启动初始化的 **SQLite**（Compose 挂卷，重启后副本保留）。
+
+- **连通组**：两条批注区间**正长度重叠**（`a.start < b.end` 且 `b.start < a.end`）
+  即在二者间连边，取**传递连通组**；**相接**（`end == start`）**不连边**。
+- **领取 / 释放**：按批注 `id` 与**非空审阅者标识** `reviewer` 操作其所在**整组**
+  ——组内全部批注一并领取 / 释放；组无人持有方可领取（本人重复领取幂等，不产生
+  新版本），**领取他人持有的组返回 409**；**释放仅限持有者本人**（无人持有的组
+  释放返回 409）。
+- **修改**：仅持有者可 **PATCH** 修改**单条**批注的范围与 `label`，**不增删批注**。
+  修改后在新几何上**重算分组**：
+  - 新并入的**未领取**批注归该持有者（整组领取语义的延续）；
+  - 新组**触及其他持有者**的批注 → 返回 **409**，**范围与持有权均不变**；
+  - 原组被**拆开**时，各碎片**保留原持有者**；
+  - 仅相接（不连边）不视为触及，不冲突。
+- **失败原子性**：非法输入（非字符串 / 空 `id`、空 `label`、`0 ≤ start < end ≤ 文本长度`
+  不满足、重复 `id`、空 `reviewer` 等）返回 **422**；任何失败（422 / 409 / 404）
+  **都不改变副本**。
+- **并发**：所有变更请求在服务端串行化，等价于**逐次完整执行**，不会丢失其他
+  批注的修改；每次成功变更 `revision` 加 1。
+- **读取**：`GET` 返回**同一提交状态**下的固定文本、全部批注（含 `holder`，未持有
+  为 `null`）、按稳定顺序排列的连通组（每组附 `holder`）与 `revision`。读取到的
+  批注可**直接用于原审阅接口**（如 `/api/review/preview`）。
+
+SQLite 数据库在容器内位于 `/data/copies.db`（`docker-compose.yml` 的命名卷
+`copies-data`，随容器启动自动建表，重启保留副本）；可用环境变量 `COPY_DB_PATH`
+覆盖路径，本地开发默认回退到仓库根目录 `data/copies.db`（已在 `.gitignore`）。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/copies` | 入参 `{text, annotations:[{id,start,end,label}]}`（`id` 为唯一字符串），创建副本，返回 **201** 与初始快照（无人持有，`revision=1`）；非法输入 **422** |
+| GET | `/api/copies/{id}` | 返回 `{id, text, revision, annotations:[{id,start,end,label,holder}], groups:[{annotation_ids,holder}]}`；未知副本 **404** |
+| POST | `/api/copies/{id}/annotations/{ann_id}/claim` | 入参 `{reviewer}`，按批注 id **整组领取**，返回最新快照；他人持有 **409**，`reviewer` 非法 **422**，批注 / 副本不存在 **404** |
+| POST | `/api/copies/{id}/annotations/{ann_id}/release` | 入参 `{reviewer}`，**持有者整组释放**；无人持有 / 他人持有 **409**，`reviewer` 非法 **422** |
+| PATCH | `/api/copies/{id}/annotations/{ann_id}` | 入参 `{reviewer, start, end, label}`，仅持有者改单条范围与 label，随后重算分组；触及他人 **409**（范围与持有权均不变），未持有 / 非法区间 / 空 label **409 / 422** |
+
+```bash
+# 创建工作副本：a 与 b 正长度重叠同组；b 与 c 相接不连边；d 独立
+CID=$(curl -s http://localhost:8000/api/copies \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"0123456789abcdefghij",
+       "annotations":[{"id":"a","start":0,"end":4,"label":"甲"},
+                      {"id":"b","start":3,"end":7,"label":"乙"},
+                      {"id":"c","start":7,"end":10,"label":"丙"},
+                      {"id":"d","start":15,"end":18,"label":"丁"}]}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+# alice 按批注 id 领取其所在整组 {a, b}（c 与 b 相接，不在组内）
+curl -s -X POST http://localhost:8000/api/copies/$CID/annotations/a/claim \
+  -H 'Content-Type: application/json' -d '{"reviewer":"alice"}'
+
+# bob 领取 alice 持有的组 → 409 {"detail":{"message":...,"holder":"alice",...}}
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  http://localhost:8000/api/copies/$CID/annotations/b/claim \
+  -H 'Content-Type: application/json' -d '{"reviewer":"bob"}'   # 409
+
+# bob 领取无人持有的 c；alice 持有者释放 {a, b}
+curl -s -o /dev/null -X POST http://localhost:8000/api/copies/$CID/annotations/c/claim \
+  -H 'Content-Type: application/json' -d '{"reviewer":"bob"}'
+curl -s -o /dev/null -X POST http://localhost:8000/api/copies/$CID/annotations/b/release \
+  -H 'Content-Type: application/json' -d '{"reviewer":"alice"}'
+
+# 仅持有者可 PATCH 单条范围与 label；与他人批注仅相接（end==start）允许
+curl -s -X PATCH http://localhost:8000/api/copies/$CID/annotations/c \
+  -H 'Content-Type: application/json' \
+  -d '{"reviewer":"bob","start":8,"end":10,"label":"丙改"}'
+
+# 读取同一提交状态（含 holder 与连通组），可直接喂给原审阅接口
+curl -s http://localhost:8000/api/copies/$CID
+```
+
 ## 快速开始（容器一键拉起）
 
 ```bash
@@ -531,6 +606,11 @@ JSON」得到：
 | POST | `/api/relabel/preview` | 入参 `{text, annotations:[{id,start,end,label,…}], rules:{target_labels:[…], rules:[{from,to,pattern?}]}}`，返回 `{items:[{id,start,end,text,source_label,final_label,chain,steps,status,errors}], errors, target_labels}`——逐条迁移链（含命中规则）与逐项错误（`no_rule` / `cycle`）；非法区间 / 空 label / 重复 id / 规则集非法（空或重复目标标签、空 from/to、非法正则、回退规则冲突）均返回 **422** |
 | POST | `/api/relabel/export` | 同上；后端重新求值迁移链，存在逐项错误时返回 **409** 并列出 `errors`，否则返回 `{annotations, count}`——保持输入顺序与 id、范围、其余字段不变，只替换 label |
 | POST | `/api/redact/export` | 入参 `{text, annotations:[{id,start,end,label}], redact_labels:[…]}`；命中标签的区间重叠或相接即合并，每区替换为一个 `[遮盖]`，命中批注不导出，其余批注跨区拆成可见片段（完全被遮盖的舍弃），返回 `{text, annotations:[{source_id,fragment,start,end,label}], count, redacted_count}`——片段按原批注顺序及原文位置排列，`fragment` 从 1 开始，范围内文字为原文可见部分；无命中时文本与批注范围不变；非法区间 / 空 label / 重复 id / 非法遮盖标签均返回 **422**（不返回部分结果） |
+| POST | `/api/copies` | 可领取审阅工作副本：入参 `{text, annotations:[{id,start,end,label}]}`（唯一字符串 id、非空 label、码点 `[start,end)`），返回 **201** 与初始快照（无人持有、`revision=1`，持久化到 SQLite 挂卷）；非法输入 **422** |
+| GET | `/api/copies/{id}` | 返回同一提交状态 `{id, text, revision, annotations:[{id,start,end,label,holder}], groups:[{annotation_ids,holder}]}`（正长度重叠传递连通、相接不连边）；未知副本 **404** |
+| POST | `/api/copies/{id}/annotations/{ann_id}/claim` | 入参 `{reviewer}`（非空字符串），按批注 id 整组领取（本人重复领取幂等）；他人持有 **409**，非法 reviewer **422**，副本 / 批注不存在 **404** |
+| POST | `/api/copies/{id}/annotations/{ann_id}/release` | 入参 `{reviewer}`，持有者本人整组释放；无人持有 / 他人持有 **409**，非法 reviewer **422** |
+| PATCH | `/api/copies/{id}/annotations/{ann_id}` | 入参 `{reviewer,start,end,label}`，仅持有者改单条范围与 label（不增删批注）后重算分组：并入的未领取批注归本人，触及他人 **409**（范围与持有权均不变），拆开的组保留原持有者；未持有 **409**，非法区间 / 空 label / 非法 reviewer **422**；并发请求等价逐次完整执行 |
 
 迁移导出条目状态取值：`shifted` / `matched` / `disambiguated` / `manual` / `abandoned`（废弃项 `start`、`end` 为 `null`）。
 
@@ -697,7 +777,7 @@ python -m pytest tests/
 
 ```
 app/
-  main.py            # FastAPI 入口与接口（迁移 + 仲裁 + 序列标注 + 嵌套审计 + 制式转换 + 审阅切片 + 标签体系迁移 + 遮盖导出）
+  main.py            # FastAPI 入口与接口（迁移 + 仲裁 + 序列标注 + 嵌套审计 + 制式转换 + 审阅切片 + 标签体系迁移 + 遮盖导出 + 可领取审阅工作副本）
   validation.py      # 批注输入校验：策略驱动的入口验证器（文本长度来源 / 码点区间 / 非空 label / id 类型与唯一性作用域 / 额外字段保留 / 错误前缀）
   migration.py       # 迁移核心：匹配块平移、原文搜索、上下文 Levenshtein 裁决
   arbitration.py     # 仲裁核心：二分图连通分量分组、整组决策校验与导出
@@ -707,6 +787,7 @@ app/
   review.py          # 审阅切片核心：顺序装箱、窗口均分与边界余量转移、JSONL 导出、审阅结果校验回导
   relabel.py         # 标签体系迁移核心：规则集校验（目标标签 / 正则 / 回退约束）、迁移链求值（循环与缺规则检测）、导出重算
   redaction.py       # 遮盖导出核心：命中区间重叠/相接合并、[遮盖] 替换、可见片段拆分与新码点坐标换算
+  copies.py          # 可领取审阅工作副本：正长度重叠传递分组（相接不连边）、整组领取/释放、持有者改单条后重算分组，SQLite 持久化（进程锁串行化，重启保留）
   static/            # 原生 HTML/CSS/JS 前端（index.html 迁移页、arbitrate.html 仲裁页、sequence.html 序列标注页、nesting.html 嵌套审计页、units.html 制式转换页、review.html 审阅切片页、relabel.html 标签体系迁移页）
 tests/
   test_migration.py
@@ -717,6 +798,9 @@ tests/
   test_review.py
   test_relabel.py
   test_redaction.py
+  test_copies.py
+  test_copy_store.py
+  test_copy_api.py
   test_validation.py
 Dockerfile
 docker-compose.yml
